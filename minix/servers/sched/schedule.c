@@ -15,7 +15,8 @@
 
 static unsigned balance_timeout;
 
-#define BALANCE_TIMEOUT	5 /* how often to balance queues in seconds */
+#define BALANCE_TIMEOUT	10 /* how often to balance queues in seconds */
+#define QUANTUM_LIMIT 3 
 
 static int schedule_process(struct schedproc * rmp, unsigned flags);
 
@@ -96,8 +97,12 @@ int do_noquantum(message *m_ptr)
 	}
 
 	rmp = &schedproc[proc_nr_n];
-	if (rmp->priority < MIN_USER_Q) {
-		rmp->priority += 1; /* lower priority */
+	rmp->quantum_cont++;
+	if (rmp->quantum_cont >= QUANTUM_LIMIT) {
+		if (rmp->priority < MIN_USER_Q) {
+			rmp->priority += 1; /* lower priority */
+			rmp->quantum_cont = 0; 
+		}
 	}
 
 	if ((rv = schedule_process_local(rmp)) != OK) {
@@ -129,6 +134,7 @@ int do_stop_scheduling(message *m_ptr)
 #ifdef CONFIG_SMP
 	cpu_proc[rmp->cpu]--;
 #endif
+	rmp->quantum_cont = 0;
 	rmp->flags = 0; /*&= ~IN_USE;*/
 
 	return OK;
@@ -158,6 +164,7 @@ int do_start_scheduling(message *m_ptr)
 	rmp = &schedproc[proc_nr_n];
 
 	/* Populate process slot */
+	rmp->quantum_cont = 0;
 	rmp->endpoint     = m_ptr->m_lsys_sched_scheduling_start.endpoint;
 	rmp->parent       = m_ptr->m_lsys_sched_scheduling_start.parent;
 	rmp->max_priority = m_ptr->m_lsys_sched_scheduling_start.maxprio;
@@ -280,6 +287,7 @@ int do_nice(message *m_ptr)
 
 	/* Update the proc entry and reschedule the process */
 	rmp->max_priority = rmp->priority = new_q;
+	rmp->quantum_cont = 0; /*reset quantum counter when priority is manually adjusted*/
 
 	if ((rv = schedule_process_local(rmp)) != OK) {
 		/* Something went wrong when rescheduling the process, roll
@@ -345,10 +353,10 @@ void init_scheduling(void)
  *				balance_queues				     *
  *===========================================================================*/
 
-/* This function in called every N ticks to rebalance the queues. The current
- * scheduler bumps processes down one priority when ever they run out of
- * quantum. This function will find all proccesses that have been bumped down,
- * and pulls them back up. This default policy will soon be changed.
+/* This function in called every N ticks to rebalance the queues based on
+ * CPU usage history. Processes that consumed zero full quantums   are
+ * promoted, while the conters for all processes are reset to start a new
+ * window.
  */
 void balance_queues(void)
 {
@@ -357,10 +365,15 @@ void balance_queues(void)
 
 	for (proc_nr=0, rmp=schedproc; proc_nr < NR_PROCS; proc_nr++, rmp++) {
 		if (rmp->flags & IN_USE) {
-			if (rmp->priority > rmp->max_priority) {
-				rmp->priority -= 1; /* increase priority */
-				schedule_process_local(rmp);
+			if (rmp->quantum_cont == 0)
+			{
+				if (rmp->priority > rmp-> max_priority)
+				{
+					rmp->priority-=1; /*increase priority*/
+					schedule_process_local(rmp);
+				}
 			}
+			rmp->quantum_cont = 0;
 		}
 	}
 
