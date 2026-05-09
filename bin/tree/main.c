@@ -15,6 +15,10 @@ void dfs(char *ruta);
 
 void print(char *ruta)
 {
+    printf("%c", -61);
+    printf("%c", -60);	
+    printf(" ");
+    
     for (unsigned i = 0; i < strlen(ruta); i++)
     {
         printf("%c", ruta[i]);
@@ -22,10 +26,15 @@ void print(char *ruta)
 }
 void print_spaces()
 {
-    for (int i = 0 ; i < prof; i++)
+    for (int i = 0 ; i < prof*2; i++)
     {
-        printf("  ");
+        if (i % 2 == 0)
+	{	   
+            printf("%c", -77);
+	}
+	printf(" ");
     }
+
 }
 void dfs(char *ruta)
 {
@@ -80,7 +89,7 @@ int main(int c_arg, char **args)
         printf("Invalid tree usage: tree <ruta>");
         return 1;
     }
-    print(ruta);
+    
     dfs(ruta);
 }
 
